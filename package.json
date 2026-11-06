@@ -1,0 +1,5 @@
+{
+  "name": "oceans-11-golf",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}
