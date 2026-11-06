@@ -1,5 +1,11 @@
 {
   "name": "oceans-11-golf",
   "private": true,
-  "scripts": { "test": "node --test" }
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@netlify/blobs": "11.1.7"
+  }
 }

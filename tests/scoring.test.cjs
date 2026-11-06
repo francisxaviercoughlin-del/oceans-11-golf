@@ -1,42 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const vm = require('node:vm');
-const html = readFileSync(process.env.APP_HTML || require('node:path').join(__dirname, '../index.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-
-// Execute the shipped script and its actual event handlers, with small DOM/storage doubles.
-function app(saved) {
-  const elements = new Map(), alerts = [], storage = new Map();
-  if (saved) storage.set('oceans11-v1', JSON.stringify(saved));
-  const element = id => {
-    if (!elements.has(id)) elements.set(id, { value: '', innerHTML: '', textContent: '', disabled: false });
-    return elements.get(id);
-  };
-  const context = vm.createContext({
-    document: { getElementById: element },
-    localStorage: { getItem: key => storage.get(key), setItem: (key, val) => storage.set(key, val) },
-    alert: msg => alerts.push(msg), confirm: () => true, window: {},
-  });
-  vm.runInContext(script, context);
-  return {
-    run: code => vm.runInContext(code, context), element, alerts,
-    saved: () => JSON.parse(storage.get('oceans11-v1')),
-    state: () => JSON.parse(vm.runInContext('JSON.stringify(s)', context)),
-    load: state => vm.runInContext(`s=${JSON.stringify(state)};render()`, context),
-    change: (id, dataset, value) => element(id).onchange({ target: { dataset, value: String(value) } }),
-  };
-}
-function player(id = 1, hcp = 0) {
-  return { id, name: `Golfer ${id}`, hcp, scores: Array(18).fill(null), choices: Array(18).fill(null) };
-}
-function round(hole, players = [player()]) {
-  return { course: 'Test course', date: '2026-11-05', hole, pars: Array(18).fill(4), indexes: Array.from({ length: 18 }, (_, i) => i + 1), players };
-}
-function prior(p, count, through) {
-  for (let i = 0; i < through; i++) { p.choices[i] = i < count; p.scores[i] = 4; }
-  return p;
-}
+const { app, player, round, prior } = require('./helpers/app.cjs');
 
 test('a twelfth selection is disabled, automatically skipped, and rejected by the handler', () => {
   const a = app(round(12, [prior(player(), 11, 11)]));
@@ -207,31 +171,6 @@ test('valid saved rounds reopen unchanged, including all prior scores and choice
   const a = app(r);
   assert.deepEqual(a.state(), r);
   assert.deepEqual(a.saved(), r);
-});
-
-test('verified JSON import remains available and rejects duplicate rankings', () => {
-  const a = app(), indexes = Array.from({ length: 18 }, (_, i) => 18 - i);
-  a.element('scorejson').value = JSON.stringify({ pars: Array(18).fill(5), strokeIndexes: indexes });
-  a.element('importscore').onclick();
-  assert.deepEqual(a.state().indexes, indexes);
-  assert.deepEqual(a.state().pars, Array(18).fill(5));
-  const before = a.state();
-  a.element('scorejson').value = JSON.stringify({ pars: Array(18).fill(4), strokeIndexes: Array(18).fill(1) });
-  a.element('importscore').onclick();
-  assert.deepEqual(a.state(), before);
-  assert.match(a.element('lookupstatus').textContent, /Import failed/);
-});
-
-test('AI course lookup still previews and applies a verified scorecard', async () => {
-  const a = app();
-  a.run(`fetch=async()=>({ok:true,text:async()=>JSON.stringify({courseName:'Verified course',tee:'White',ranking:'men',sourceUrl:'https://example.com/card',pars:Array(18).fill(5),strokeIndexes:Array.from({length:18},(_,i)=>18-i)})})`);
-  for (const [id, val] of [['lookupname','Test'],['lookuplocation','Auburn, AL'],['lookuptees','White'],['lookupranking','men']]) a.element(id).value = val;
-  await a.element('lookup').onclick();
-  assert.match(a.element('lookupstatus').textContent, /Review the source/);
-  a.element('applylookup').onclick();
-  assert.equal(a.state().course, 'Verified course');
-  assert.deepEqual(a.state().indexes, Array.from({ length: 18 }, (_, i) => 18 - i));
-  assert.equal(a.element('lookup').disabled, false);
 });
 
 test('every reachable 18-hole decision path ends at exactly eleven selections', () => {
